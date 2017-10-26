@@ -1,10 +1,11 @@
-Serial Communication
-====================
+Serial Communication & Programming
+==================================
+* [git.io/serial](https://git.io/serial)
 
-This repo is a set of slides about **Serial Communication**.
+This repo is a set of slides about **Serial Communication & Programming**.
 
 * [Markdown Scripts](./presentation.md)
-* [Presentation Slides](https://jack-q.github.com/serial-communication/)
+* [Presentation Slides](https://jack-q.github.io/serial-communication-programming/)
 
 ---
 Except explicitly denotation, materials in this repo are all licensed under a 

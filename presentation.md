@@ -7,7 +7,9 @@
 ### a brief introduction <!-- .element： style="font-size: 1.2em" -->
 
 `Jack Q` <!-- .element: style="color:#68a;font-size: 0.4em" -->
-<br/>`Oct. 2017` <!-- .element: style="color:#579;font-size: 0.4em" -->
+<br/>
+[git.io/serial](https://git.io/serial)<!-- .element: style="color:#579;font-size: 0.4em" -->
+<span>Oct. 2017</span> <!-- .element: style="color:#579;font-size: 0.4em; margin-left: 40px;" -->
 ****************************************
 
 ## Agenda
@@ -289,12 +291,14 @@ uint8_t ReadByte(OneWire_t* OneWireStruct) {
 
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-## Pin mode:
 * DB9: 
-<!-- TODO: image for DB9 -->
-* DB25: 
-<!-- TODO: image for DB25 -->
 
+![DB-9 Pin Assignment](./image/RS-232-DB9.svg) <!--.element: style="width: 70%" -->
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+* DB25: 
+
+![DB-25 Pin Assignment](./image/RS-232-DB25.svg) <!--.element: style="width: 90%" -->
 ****************************************
 
 ## Serial Communication Parameters
@@ -423,13 +427,16 @@ universal asynchronous receiver & transmitter
   - maximize the utility of limited pins
   - decrease cost of pin-out (thus decrease overall cost)
   - simplify deployment for specific scenario
+* Alternate Function configuration
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+  ![GPIO Alternate Function](./image/gpio-alternate-function.svg)
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Interrupt model
 * trigger a common interrupt for each device, which can be distinguished via SFR status
 * interrupt tree
   
-  ![interrupt-tree](./image/interrupt-tree.svg)
+  ![interrupt-tree](./image/interrupt-tree.svg) <!--.element: style="width: 50%; padding: 20px;" -->
 
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 * **Reception related**: 
@@ -480,7 +487,7 @@ universal asynchronous receiver & transmitter
 * configure baud rate:
   - select source: MSI (range 9) => 24 MHz
   - config PLL: MSI * 10 / 3 / 8 => 10 MHz
-    (PLL )
+    (PLL provides a multiplier and two divisors)
   - all other prescalers are set to 1
   - select clock source and configure baud rate
     10,000,000 / 1042 => 9600
@@ -521,9 +528,9 @@ UART-like configuration/interface
 </div>
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-### Example: USB-RS232 Adapter
+* Example: USB-RS232 Adapter
 
-![USB-RS232(DB9) Adapter](./image/usb-rs232-adapter.jpg)
+![USB-RS232(DB9) Adapter](./image/usb-rs232-adapter.jpg)<!-- .element: style="width: 40%"-->
 
 ****************************************
 
@@ -531,12 +538,51 @@ UART-like configuration/interface
 ## Serial Port Programming  <!-- .element: style="color:#eee" -->
 
 ****************************************
+### Overview
+* Protocol: an agreement for both size
+* Message handling: I/O operations conforming protocol
+  - message transmission
+  - message reception
+* Point-to-point communication,
+* shares lots of principles of network programming
+****************************************
 
 ### Protocol Design
+
 * communication protocol considerations
-* 
-* conventions
-* sample
+  - type of message
+  - amount of message
+  - frequency of message
+  - type of hardware layer
+  - etc
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### component of protocol for serial communication
+* overall description and design principles
+* applied devices/terminals
+* connection parameters
+  - baud rate
+  - parity bit
+  - data bits
+  - ...
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* message specification
+  - direction (transmitter/receptor)
+  - length
+  - field definition
+  - order/condition
+  - checksum, encryption, etc
+  - ...
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* communication flow
+  - initialization process
+  - message serials
+  - ...
+* error handling
+  - handle undefined message
+  - link line error detection 
+  - ...
+* specification or relevant document
+  - such as encryption standard/algorithm when used
 
 ****************************************
 ### Programming model
@@ -553,7 +599,6 @@ Details of each model may vary with respect to dedicated architecture and organi
 
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-
 ### With operating system abstraction
 Devices cannot be directly be accessed for various reasons when program is managed by operating system.
 Operating systems encapsulate serial devices and create abstract models.
@@ -561,7 +606,7 @@ Operating systems encapsulate serial devices and create abstract models.
 * file model: read/write data is an abstraction of receive/transmit message
 * device model: serial port is an abstract device capable performing certain tasks
 
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 ### Even more abstraction
 Most usage with serial communication is neural to application scenarios:
@@ -569,16 +614,153 @@ Most usage with serial communication is neural to application scenarios:
 * high-level language (esp. script languages)
 
 ****************************************
+## Bare-board Programming
+* manually initialize the whole board
+* directly handle interrupt, manage hardware resources
+* suitable to simple / highly specific application
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+* Sample initialization
+
+```c
+void SystemClock_Config() {
+  // Set system clock to 10 MHz
+  RCC_MSI_EnableRangeSelection();
+  // Range mode 9: 01001, 24MHz
+  RCC_MSI_SetRange(RCC_MSIRANGE_9);
+  while (!RCC_MSI_IsReady())
+    ;
+  RCC_SetSysClkSource(RCC_SYS_CLKSOURCE_MSI);
+  // 10 = 24 * ( 10 / 3 ) / 8
+  RCC_PLL_ConfigDomain_SYS(RCC_PLLSOURCE_MSI, 
+                           RCC_PLLM_DIV_3, 10,
+                           RCC_PLLR_DIV_8);
+  RCC_PLL_Enable();
+  RCC_PLL_EnableDomain_SYS();
+  while (!RCC_PLL_IsReady());
+
+  RCC_SetSysClkSource(RCC_SYS_CLKSOURCE_PLL);
+  if (IsEnableSysTick()) DisableSysTick();
+  SysTick->LOAD = 0x4c4b40 - 1;  // 0.5 sec (10MHz / 2)
+  SysTick->VAL = 0;
+  SelectSysTickSrc();
+  EnableSysTickInt();
+}
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+```c
+void UART_config() {
+  // Enable corresponding GPIO port
+  RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN;
+  uint32_t pin = GPIO_PIN_2;
+  GPIO_SetPinMode(GPIOA, pin, GPIO_MODE_ALTERNATE);
+  GPIO_SetPinPull(GPIOA, pin, GPIO_PULL_DOWN);
+  GPIO_SetPinSpeed(GPIOA, pin, GPIO_SPEED_FREQ_VERY_HIGH);
+  GPIO_SetAFPin_0_7(GPIOA, pin, GPIO_AF_7);
+
+  // Enable USART timer
+  RCC_SetUSARTClockSource(RCC_USART2_CLKSOURCE_SYSCLK);
+  RCC->APB1ENR1 |= RCC_APB1ENR1_USART2EN;
+  usart->BRR = 10000000 / 9600;
+  usart->CR1 = USART_CR1_RE | USART_CR1_TE;
+
+  // Enable USART2
+  usart->CR1 |= USART_CR1_UE;
+}
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Loop
-
+* wrap all actions within an infinite loop
 * Send message: put one byte, wait io operation, then put the next
-  ```c
+* Receive message: check SFR bit until data ready, then read the message
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-  ```
+* Sample code: UART send
+
+```c
+void Usart_Send_ch(char c) {
+  // Wait until transmission empty flag set
+  while (!(USART->ISR & USART_ISR_TXE));
+  USART2->TDR = c;
+}
+void Usart_Send(char *d) {
+  // send each character until NULL
+  while (*d) Usart_Send_ch(*d++);
+}
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+* Sample code: UART Receive
+```c
+// read a byte from UART
+char USART_Receive() {
+  // wait until data ready
+  while (!(usart->ISR & USART_ISR_RXNE));
+  // clear RXNE flag
+  usart->ISR = usart->ISR & ~USART_ISR_RXNE_Msk;
+  return usart->RDR & 0xff;
+}
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Interrupt
+* enable interrupt and register interrupt handler 
+* process and handle simple messages
+* set global flag to notify main flow to do the rest of handling
+  
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* Sample code:
+```c
+void USART1_IRQHandler(){
+  // RX not empty && RXNE interrupt enable
+  if((usart->ISR & USART_ISR_RXNE) && (usart->CR1 & USART_CR1_RXNEIE)) {
+    // clear interrupt bit
+    usart->ISR &= ~USART_ISR_RXNE;
+    handleMessage(huart->Instance->RDR);
+  }
+  // check more interrupts
+}
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### DMA
+* Direct Memory Access
+* generally a dedicate device on MCU
+* configuration
+  * enable device clock
+  * configure timer
+  * device interrupt (when data is ready)
 
 ****************************************
+
+## within operating system
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Linux: ioctl, termios
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Blocking / Non-blocking
+```c
+int fd = open("/dev/ttyCOM1");
+```
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Linux: select, poll, epoll
+
+****************************************
+## programming in high level language
+* 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* Java NIO encapsulates non-blocking programming model in a platform neural manner
+  - Linux: epoll (Java7+)
+  - Windows: I/O Completion Ports
+  - MacOS/FreeBSD: kqueue
+* Node.js create event loop and handle IO via non-blocking model
+  - libuv is written for node.js as an abstraction of epoll, kqueue, IOCP
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### JavaScript: Event-Driven model
+```
+
+```
 ****************************************
 
 <!-- .slide: data-background="#09c" id="section-summary" -->
@@ -595,10 +777,10 @@ Most usage with serial communication is neural to application scenarios:
 * handshake
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### UART
-* features
+* feature
+* GPIO alternate function
+* interrupt
 * timer and baud rate generator
-* interrupt model
-* DMA model
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Serial Port Programming
 * protocol design
@@ -612,8 +794,8 @@ Most usage with serial communication is neural to application scenarios:
 ****************************************
 
 ### References
-* 
 * *STM32L4x6 advanced ARM-based 32-bit MCUs Reference Manual*, STMicroelectronics
+* *STM32L476xx Ultra-low-power ARM Contex-M4 32-bit MCU Datasheet*, STMicroelectronics
 * *DS18B20 Programmable Resolution 1-Wire Digital Thermometer Specification*, Maxim Integrated 
 
 ****************************************
@@ -622,7 +804,8 @@ Most usage with serial communication is neural to application scenarios:
 
 * *Advanced Programming in the UNIX Environment*, Third Edition, by Stevens, W. Richard, et,al.
 * *Linux System Programming*, Second Edition, by Robert Love
-
+* *I/O Completion Ports*, MSDN, microsoft.com, [link](https://msdn.microsoft.com/en-us/library/windows/desktop/aa365198)
+* *design of libuv*, libuv.org, [link](http://docs.libuv.org/en/latest/design.html)
 ****************************************
 
 <!-- .slide: data-background="#222423" id="the-end" -->
@@ -630,4 +813,7 @@ Most usage with serial communication is neural to application scenarios:
 
 the end <!-- .element: style="color:#aaa" -->
 
-(By Jack Q, licensed under CC-BY-SA 4.0 Intl) <!-- .element: style="color:#444; font-size: 0.3em" -->
+(By Jack Q; Licensed under CC-BY-SA 4.0 Intl.; <!-- .element: style="color:#444; font-size: 0.4em" -->
+[Source at GitHub](https://github.com/Jack-Q/serial-communication-programming/)
+<!-- .element: style="color: #456" -->
+)
