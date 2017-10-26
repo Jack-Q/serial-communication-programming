@@ -735,32 +735,45 @@ void USART1_IRQHandler(){
 ****************************************
 
 ## within operating system
-
+* file in Linux/Unix: abstract file, with read/write capability
+* Windows: terminal device `COM0`, `COM1`, etc
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Linux: ioctl, termios
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-### Blocking / Non-blocking
 ```c
-int fd = open("/dev/ttyCOM1");
+int fd;
+struct termios cfg;
+speed_t speed = B9600;
+fd = open("/dev/ttyMT0", O_RDRW);
+tcgetattr(fd, &cfg);
+cfmakeraw(&cfg);
+cfsetispeed(&cfg, speed);
+cfsetospeed(&cfg, speed);
+tcsetattr(fd, TCSANOW, &cfg)
+// serial port is ready
+close(fd);
 ```
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Blocking / Non-blocking
+* blocking mode
+* non-blocking mode
+* add flag `O_NONBLOCK` when open file
+* time to return from kernel
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Linux: select, poll, epoll
+* IO multiplexor: manage multiple FDs in single thread 
+* select/poll: provide FD set every time using it
+* epoll: maintain the same FD set
+* epoll is recommended approach for async IO
 
 ****************************************
 ## programming in high level language
-* 
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 * Java NIO encapsulates non-blocking programming model in a platform neural manner
   - Linux: epoll (Java7+)
   - Windows: I/O Completion Ports
   - MacOS/FreeBSD: kqueue
 * Node.js create event loop and handle IO via non-blocking model
   - libuv is written for node.js as an abstraction of epoll, kqueue, IOCP
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-### JavaScript: Event-Driven model
-```
-
-```
+  - event driven / callbacks
 ****************************************
 
 <!-- .slide: data-background="#09c" id="section-summary" -->
