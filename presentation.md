@@ -133,7 +133,7 @@ Definition:
 ## Data transmission direction:
 * Uni-directional (one-way communication)
   - transmission only
-  - receipt only
+  - reception only
 * Bi-directional
   - Semi-duplex: cannot transmit/receive simultaneously
   - Full-duplex: supports simultaneously transmission/reception
@@ -374,12 +374,156 @@ universal asynchronous receiver & transmitter
 
 ****************************************
 
-## UART/USART
+## UART
 * UART: universal asynchronous receiver & transmitter
-* USART: universal synchronous/asynchronous receiver & transmitter 
-* UART/USART provides flexible data exchange with external equipment
-* RS232 is a lower level protocol (hardware) that a UART implementation may support (highly likely), 
-  which specifying pin definition, voltage specification (+/- 5V-12V), handshake model, etc
+* USART: universal synchronous/asynchronous receiver & transmitter, some boards provides 
+  more flexibility on serial communication supporting both sync and async modes.
+* UART provides flexible data exchange with external equipment
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### UART, RS232, etc
+
+* RS232 is a lower level protocol (hardware) that a UART implementation may (highly likely) support (or compatible with), 
+  which specifying pin definition, voltage specification (+/- 3V-12V), handshake model, etc
+* On most of development boards, UART/USART is connected to pins of TTL voltage (commonly 3.3V or 1.8V)
+  (RS232 specifying the voltage should be +/- 3-12V, a dedicated module with ID MAX232 may be involved for conversion)
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Relevant modules
+
+* Bus: enable/disable UART 
+* GPIO: function selection of relevant pins
+* Timer: generate baud rate
+* Interrupt: notify message reception, transmission finish, etc
+* DMA: transmit block of message without processor intervention
+* FIFO: buffer message to be sent or to be handled
+  
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Configure UART
+* configure embedded device is complex
+  - hardware vendors provides large range of configurable options to maximize 
+    flexibility of devices and it's more economic to provide a option then a variation;
+  - hardware resource is usually limited;
+  - hardware are tightly connected in some aspects;
+
+****************************************
+## Example: UART of STM32-L4x6 MCU
+* Implementation: embeds 6 UART peripherals, 3 USART, 2 UART, 1 LPUART (low power)
+* Features:
+  - full-duplex asynchronous communication
+  - oversampling
+  - baud-rate detection
+  - dual clock (bus IO & baud rate)
+  - hardware flow-control (RTS, CTS, etc)
+  - etc.
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+### GPIO function selection
+* GPIO: general purpose input/output
+  - maximize the utility of limited pins
+  - decrease cost of pin-out (thus decrease overall cost)
+  - simplify deployment for specific scenario
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Interrupt model
+* trigger a common interrupt for each device, which can be distinguished via SFR status
+* interrupt tree
+  
+  ![interrupt-tree](./image/interrupt-tree.svg)
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* **Reception related**: 
+  - IDLE (idle line detection), 
+  - ORE (overrun error), 
+  - RXNE (reception data register not empty), 
+  - PE (parity error), 
+  - LBD(LIN break detection),
+  - NF (noise flag), 
+  - FE (framing error), 
+  - CMF (character match flag), 
+  - RTOF(receiver timeout flag), 
+  - EOBF(end of block flag), 
+  - WUF(wake-up from stop flag);
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* **Transmission related**: 
+  - TC (transmission complete), 
+  - TXE(transmission data register empty), 
+  - CTS (clear to send);
+* each interrupt can be enabled or disabled, respectively
+* some of the flags may only be triggered for certain protocols
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* initialize: 
+  - enable relevant interrupts in UART control registers
+  - prioritize and enable UART interrupt in NVIC control registers
+  - enable UART to wait for interrupt
+* handle: 
+  - check UART control register to figure out specific interrupt
+  - handle specific interrupt
+  - reset relevant UART control register
+  - reset UART interrupt control register
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Baud rate generation
+* configure clock source and reload value to generate designate baud rate
+* Clock tree:
+```
+   <Source>     <Adjustment>    <Destination>
+  Oscillator ->   PLL/PSC   -> Peripheral/Processor
+```
+  - several oscillators available for selection as clock source
+  - PLL (Parse Locked Loop): multiplication / division to clock
+  - PSC (Prescaler):division to clock
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* Clock tree connection  
+  ![Clock Tree](./image/clock-tree.svg)<!-- .element: style="padding: 20px; background: #fff; overflow: auto" -->
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* configure baud rate:
+  - select source: MSI (range 9) => 24 MHz
+  - config PLL: MSI * 10 / 3 / 8 => 10 MHz
+    (PLL )
+  - all other prescalers are set to 1
+  - select clock source and configure baud rate
+    10,000,000 / 1042 => 9600
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+* relevant consideration
+  - **super-sample**: sample 8 values in each transmission cycle for more reliable result
+  - **clock deviation**: oscillator error (transmitter & receiver), 
+    baud rate quantization error, transmission line error, sampling point error, etc
+  - **auto baud rate detection**: single bit (`1`), double bit (`10`), initial byte (`0x7f`, `0x55`)
+****************************************
+
+## Other Related Interface
+
+* USB CDC: communications device class (`CLS=0x02`,`SCL=0x00`)
+  - some CDC device can be used just as RS232 device
+  - RS232-USB adapter also utilize this device class
+* BlueTooth SPP: serial port profile
+  - mapping serial port message to bluetooth channel
+  - enclose serial model to bluetooth stack
+  - great alternation to wired solutions
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+* Layered model & virtual serial port
+
+<div>
+<pre style="display: inline-block; width: auto;padding: 40px;">
+                MCU
+            -----------
+            RX|    |TX
+            -----------
+UART-like configuration/interface
+---------------------------------
+  USB interface    BT interface
+  -------------    ------------
+    USB Host         BT Host
+</pre>
+</div>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+### Example: USB-RS232 Adapter
+
+![USB-RS232(DB9) Adapter](./image/usb-rs232-adapter.jpg)
 
 ****************************************
 
@@ -396,14 +540,44 @@ universal asynchronous receiver & transmitter
 
 ****************************************
 ### Programming model
-* Loop
-* Interrupt
-* DMA
+
+For program that directly interact with hardware (i.e. register, interrupts, etc), 
+there are three common programming models: 
+
+* **Loop**: TX/RX on normal program flow
+* **Interrupt**: TX/RX with interrupt handler
+* **DMA**: TX/RX using direct memory access
+
+Details of each model may vary with respect to dedicated architecture and organization
+ of systems. <!-- .element: style="font-size:0.8em" -->
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+### With operating system abstraction
+Devices cannot be directly be accessed for various reasons when program is managed by operating system.
+Operating systems encapsulate serial devices and create abstract models.
+
+* file model: read/write data is an abstraction of receive/transmit message
+* device model: serial port is an abstract device capable performing certain tasks
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+### Even more abstraction
+Most usage with serial communication is neural to application scenarios:
+* using third-party library, middleware, etc
+* high-level language (esp. script languages)
+
 ****************************************
-### Operating system abstraction 
-* file model
-* device model
+### Loop
+
+* Send message: put one byte, wait io operation, then put the next
+  ```c
+
+  ```
+
 ****************************************
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ### Blocking / Non-blocking
 ****************************************
 
@@ -434,23 +608,21 @@ universal asynchronous receiver & transmitter
 * implementation: 
   - Bare-board application
   - Linux file abstraction
+* high-level application
 ****************************************
 
 ### References
-* Exploratory Software Testing: Tips, tricks, tours and techniques to guide test design.
-  [link](https://msdn.microsoft.com/en-us/library/jj620911.aspx)
-* BBST17: Exploratory testing: [PDF](./reference/BBST17-Exploratory-testing.pdf)
-* BBST18: Paired Exploratory testing: [PDF](./reference/BBST18-Paired-Exploratory-Testing.pdf)
-* The Nature of Exploratory Testing: [PDF](./reference/The-Nature-of-Exploratory-Testing.pdf)
-* A Tutorial in Exploratory Testing: [PDF](./reference/A-Tutorial-in-Exploratory-Testing.pdf)
-* Exploratory Testing: An Overview [PDF](./reference/Exploratory-Testing-An-Overview.pdf)
+* 
+* *STM32L4x6 advanced ARM-based 32-bit MCUs Reference Manual*, STMicroelectronics
+* *DS18B20 Programmable Resolution 1-Wire Digital Thermometer Specification*, Maxim Integrated 
+
 ****************************************
 
-### Other material
-(currently not used in pervious contents)
-* Exploratory Testing: A Multiple Case Study [PDF](./reference/Exploratory-Testing-A-Multiple-Case-Study.pdf)
-* How is Exploratory Testing Used:A State-of-the-Practice Survey [PDF](./reference/How-is-Exploratory-Testing-Used-A-State-of-the-Practice-Survey.pdf)
-* 3 Simple Tricks to Make Exploratory Testing More Efficient [link](http://reqtest.com/testing-blog/3-simple-tricks-to-make-exploratory-testing-more-efficient/)
+### Extended Materials
+
+* *Advanced Programming in the UNIX Environment*, Third Edition, by Stevens, W. Richard, et,al.
+* *Linux System Programming*, Second Edition, by Robert Love
+
 ****************************************
 
 <!-- .slide: data-background="#222423" id="the-end" -->
@@ -458,4 +630,4 @@ universal asynchronous receiver & transmitter
 
 the end <!-- .element: style="color:#aaa" -->
 
-(By Jack Q, licensed under CC-BY-SA 4.0 Intl) <!-- .element: style="color:#444; font-size: 0.4em" -->
+(By Jack Q, licensed under CC-BY-SA 4.0 Intl) <!-- .element: style="color:#444; font-size: 0.3em" -->
